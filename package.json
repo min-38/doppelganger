@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
-    "start": "node dist/src/index.js"
+    "start": "node dist/src/index.js",
+    "test": "tsx src/utils/date.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
