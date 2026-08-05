@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db } from "../db.js";
+import { db, HISTORY_TABLE } from "../db.js";
 import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
 import { requireRegistered } from "./insert.js";
 import type { ToolDef } from "./index.js";
@@ -16,6 +16,21 @@ async function readRecord(collectionName: string, id: number) {
     data: JSON.parse(String(row.data)) as Record<string, unknown>,
     created_at: String(row.created_at),
   };
+}
+
+/** Snapshots a record before it is changed, so the previous value survives. */
+async function recordHistory(
+  collectionName: string,
+  id: number,
+  operation: "update" | "delete",
+  before: { date: string; data: Record<string, unknown> },
+) {
+  await db.execute({
+    sql: `INSERT INTO ${HISTORY_TABLE}
+            (collection_name, record_id, operation, before_date, before_data, changed_at)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [collectionName, id, operation, before.date, JSON.stringify(before.data), now()],
+  });
 }
 
 const updateRecord: ToolDef = {
@@ -59,6 +74,7 @@ const updateRecord: ToolDef = {
     }
 
     const eventDate = newDate === undefined ? current.date : normalizeDateTime(newDate);
+    await recordHistory(collection_name, id, "update", current);
     const timestamp = now();
     await db.execute({
       sql: `UPDATE ${collection_name} SET date = ?, data = ?, updated_at = ? WHERE id = ?`,
@@ -73,8 +89,8 @@ const deleteRecord: ToolDef = {
   name: "delete_record",
   config: {
     description:
-      "Delete one record permanently. This cannot be undone, so call query_records first, confirm the id belongs to the record the user means, " +
-      "and delete only that one. The deleted record is returned so it can be re-inserted if this was a mistake.",
+      "Delete one record. Call query_records first and confirm the id belongs to the record the user means — delete only that one. " +
+      "The deleted values are returned and also kept in the history, so restore_record can bring the record back.",
     inputSchema: {
       collection_name: z.string().describe("Collection holding the record"),
       id: z.number().int().positive().describe("Record id from query_records"),
@@ -83,9 +99,65 @@ const deleteRecord: ToolDef = {
   run: async ({ collection_name, id }: { collection_name: string; id: number }) => {
     await requireRegistered(collection_name);
     const current = await readRecord(collection_name, id);
+    await recordHistory(collection_name, id, "delete", current);
     await db.execute({ sql: `DELETE FROM ${collection_name} WHERE id = ?`, args: [id] });
     return { deleted: true, collection_name, id, date: current.date, record: current.data };
   },
 };
 
-export const mutateTools: ToolDef[] = [updateRecord, deleteRecord];
+const restoreRecord: ToolDef = {
+  name: "restore_record",
+  config: {
+    description:
+      "Undo the last update or delete on a record. Give it the collection and the record id shown by update_record / delete_record; " +
+      "a deleted record comes back with its original id, an updated one goes back to its previous values.",
+    inputSchema: {
+      collection_name: z.string().describe("Collection the record belongs to"),
+      id: z.number().int().positive().describe("Record id as it was before the change"),
+    },
+  },
+  run: async ({ collection_name, id }: { collection_name: string; id: number }) => {
+    await requireRegistered(collection_name);
+    const history = await db.execute({
+      sql: `SELECT id, operation, before_date, before_data, changed_at FROM ${HISTORY_TABLE}
+             WHERE collection_name = ? AND record_id = ? ORDER BY id DESC LIMIT 1`,
+      args: [collection_name, id],
+    });
+    const entry = history.rows[0];
+    if (!entry) throw new Error(`No history for record ${id} in "${collection_name}".`);
+
+    const before = {
+      date: String(entry.before_date),
+      data: JSON.parse(String(entry.before_data)) as Record<string, unknown>,
+    };
+    const timestamp = now();
+    const exists = await db.execute({ sql: `SELECT id FROM ${collection_name} WHERE id = ?`, args: [id] });
+    if (exists.rows.length > 0) {
+      await db.execute({
+        sql: `UPDATE ${collection_name} SET date = ?, data = ?, updated_at = ? WHERE id = ?`,
+        args: [before.date, JSON.stringify(before.data), timestamp, id],
+      });
+    } else {
+      // Reinsert with the original id so earlier references still resolve.
+      await db.execute({
+        sql: `INSERT INTO ${collection_name} (id, date, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        args: [id, before.date, JSON.stringify(before.data), timestamp, timestamp],
+      });
+    }
+    // The restore itself is not pushed onto the history: re-running it would
+    // only toggle between the same two states.
+    await db.execute({ sql: `DELETE FROM ${HISTORY_TABLE} WHERE id = ?`, args: [Number(entry.id)] });
+
+    return {
+      restored: true,
+      collection_name,
+      id,
+      undone: String(entry.operation),
+      changed_at: String(entry.changed_at),
+      date: before.date,
+      record: before.data,
+    };
+  },
+};
+
+export const mutateTools: ToolDef[] = [updateRecord, deleteRecord, restoreRecord];

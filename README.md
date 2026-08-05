@@ -28,7 +28,14 @@ replaying `create_category` + `insert_record`.
 ## MCP tools
 
 `list_collections`, `find_relevant_collections`, `create_category`,
-`insert_record`, `query_records`, `update_record`, `delete_record`, `ping`.
+`insert_record`, `insert_records_bulk`, `query_records`, `get_stats`,
+`search_across_tables`, `update_record`, `delete_record`, `restore_record`,
+`suggest_merge_candidates`, `ping`.
 
 Query flow: `find_relevant_collections` first, then `query_records` on the one
-or two collections it returns — never scan everything.
+or two collections it returns — never scan everything. For numbers use
+`get_stats` rather than reading rows; for "what happened last week" style
+questions use `search_across_tables`.
+
+`update_record` and `delete_record` snapshot the previous values into
+`_history`, so `restore_record` can undo the last change to a record.

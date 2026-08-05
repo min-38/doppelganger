@@ -17,6 +17,7 @@ if (!url) {
 }
 
 export const META_TABLE = "_meta";
+export const HISTORY_TABLE = "_history";
 
 // libSQL client is lazy and manages its own connections — one per process.
 export const db: Client = createClient({
@@ -34,7 +35,7 @@ export function assertTableName(name: string): string {
       `Invalid collection name "${name}". Use lowercase letters, digits and underscores, starting with a letter.`,
     );
   }
-  if (name === META_TABLE) throw new Error(`"${META_TABLE}" is reserved.`);
+  if (name === META_TABLE || name === HISTORY_TABLE) throw new Error(`"${name}" is reserved.`);
   return name;
 }
 
@@ -53,6 +54,27 @@ export function initSchema(): Promise<void> {
          created_at      TEXT NOT NULL,
          updated_at      TEXT NOT NULL
        )`,
+    )
+    // ponytail: history grows without bound. Trim by age or per-record count
+    // if the free-tier storage ever becomes the constraint.
+    .then(() =>
+      db.execute(
+        `CREATE TABLE IF NOT EXISTS ${HISTORY_TABLE} (
+           id              INTEGER PRIMARY KEY AUTOINCREMENT,
+           collection_name TEXT NOT NULL,
+           record_id       INTEGER NOT NULL,
+           operation       TEXT NOT NULL,
+           before_date     TEXT NOT NULL,
+           before_data     TEXT NOT NULL,
+           changed_at      TEXT NOT NULL
+         )`,
+      ),
+    )
+    .then(() =>
+      db.execute(
+        `CREATE INDEX IF NOT EXISTS ${HISTORY_TABLE}_lookup_idx
+           ON ${HISTORY_TABLE} (collection_name, record_id, id)`,
+      ),
     )
     .then(() => undefined);
   return initialized;

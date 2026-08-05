@@ -6,7 +6,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { db, META_TABLE } from "../src/db.js";
+import { db, HISTORY_TABLE, META_TABLE } from "../src/db.js";
 import { readMeta } from "../src/tools/meta.js";
 import { now, today } from "../src/utils/date.js";
 
@@ -28,10 +28,20 @@ for (const entry of collections) {
   }));
 }
 
+// History is part of the snapshot: without it a restore would be impossible
+// from a backup alone.
+const history = await db.execute(`SELECT * FROM ${HISTORY_TABLE} ORDER BY id`);
+data[HISTORY_TABLE] = history.rows.map((row) => ({ ...row }));
+
 await mkdir(outDir, { recursive: true });
 const file = join(outDir, `${today()}.json`);
 await writeFile(file, JSON.stringify({ exported_at: now(), collections: data }, null, 2));
 
-const total = Object.values(data).reduce((sum, rows) => sum + rows.length, 0) - collections.length;
-console.log(`Backed up ${collections.length} collections / ${total} records -> ${file}`);
+const total =
+  Object.values(data).reduce((sum, rows) => sum + rows.length, 0) -
+  collections.length -
+  data[HISTORY_TABLE].length;
+console.log(
+  `Backed up ${collections.length} collections / ${total} records / ${data[HISTORY_TABLE].length} history rows -> ${file}`,
+);
 await db.close();
