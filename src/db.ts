@@ -1,7 +1,16 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
 import { createClient, type Client } from "@libsql/client";
 
-const url = process.env.TURSO_DATABASE_URL;
+// An MCP client can hand us an empty or unexpanded variable ("${TURSO_...}"),
+// and dotenv leaves anything already present in the environment alone. Drop
+// those first so .env still wins.
+for (const key of ["TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"]) {
+  const value = process.env[key];
+  if (!value?.trim() || value.startsWith("${")) delete process.env[key];
+}
+loadEnv();
+
+const url = process.env.TURSO_DATABASE_URL?.trim() || undefined;
 if (!url) {
   console.error("TURSO_DATABASE_URL is not set. Copy .env.example to .env and fill it in.");
   process.exit(1);
@@ -12,7 +21,7 @@ export const META_TABLE = "_meta";
 // libSQL client is lazy and manages its own connections — one per process.
 export const db: Client = createClient({
   url,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  authToken: process.env.TURSO_AUTH_TOKEN?.trim() || undefined,
 });
 
 /**

@@ -2,11 +2,7 @@
   "mcpServers": {
     "doppelganger": {
       "command": "npx",
-      "args": ["tsx", "src/index.ts"],
-      "env": {
-        "TURSO_DATABASE_URL": "${TURSO_DATABASE_URL}",
-        "TURSO_AUTH_TOKEN": "${TURSO_AUTH_TOKEN}"
-      }
+      "args": ["tsx", "src/index.ts"]
     }
   }
 }
