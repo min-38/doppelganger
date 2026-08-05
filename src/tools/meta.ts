@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, META_TABLE, initSchema } from "../db.js";
-import { rankEntries, type MetaEntry } from "../utils/score.js";
+import { categorySimilarity, rankEntries, SIMILARITY_THRESHOLD, type MetaEntry } from "../utils/score.js";
 import type { ToolDef } from "./index.js";
 
 /** Reads the whole registry. It stays small (one row per category), so no paging. */
@@ -56,4 +56,51 @@ const findRelevantCollections: ToolDef = {
   },
 };
 
-export const metaTools: ToolDef[] = [listCollections, findRelevantCollections];
+async function countRecords(collectionName: string): Promise<number> {
+  const result = await db.execute(`SELECT count(*) AS n FROM ${collectionName}`);
+  return Number(result.rows[0]?.n ?? 0);
+}
+
+const suggestMergeCandidates: ToolDef = {
+  name: "suggest_merge_candidates",
+  config: {
+    description:
+      "Maintenance: list pairs of collections that look like duplicates of each other, with a similarity score and each side's record count. " +
+      "Suggestion only — merging is manual: re-insert the smaller side's records into the larger one, then delete the leftovers. " +
+      "Worth running once there are more than ~20 collections.",
+    inputSchema: {
+      threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe(`Minimum similarity to report (default ${SIMILARITY_THRESHOLD})`),
+    },
+  },
+  run: async ({ threshold }: { threshold?: number }) => {
+    const entries = await readMeta();
+    const minimum = threshold ?? SIMILARITY_THRESHOLD;
+    const counts = new Map<string, number>();
+    for (const entry of entries) counts.set(entry.collection_name, await countRecords(entry.collection_name));
+
+    const pairs = [];
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const similarity = Number(categorySimilarity(entries[i], entries[j]).toFixed(3));
+        if (similarity < minimum) continue;
+        const side = (entry: MetaEntry) => ({
+          collection_name: entry.collection_name,
+          description: entry.description,
+          keywords: entry.keywords,
+          record_count: counts.get(entry.collection_name) ?? 0,
+        });
+        pairs.push({ similarity, a: side(entries[i]), b: side(entries[j]) });
+      }
+    }
+    pairs.sort((x, y) => y.similarity - x.similarity);
+
+    return { threshold: minimum, collection_count: entries.length, count: pairs.length, candidates: pairs };
+  },
+};
+
+export const metaTools: ToolDef[] = [listCollections, findRelevantCollections, suggestMergeCandidates];
