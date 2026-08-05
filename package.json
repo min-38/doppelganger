@@ -7,7 +7,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/src/index.js",
-    "test": "tsx src/utils/date.ts && tsx src/utils/score.ts && tsx src/utils/filter.ts",
+    "test": "tsx src/utils/date.ts && tsx src/utils/score.ts && tsx src/utils/filter.ts && tsx src/utils/duplicate.ts",
     "backup": "tsx scripts/backup.ts",
     "migrate:date": "tsx scripts/migrate-date-column.ts"
   },
