@@ -1,0 +1,30 @@
+# env
+.env
+.env.*
+!.env.example
+
+# deps / build
+node_modules/
+dist/
+
+# logs
+*.log
+npm-debug.log*
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# local agent settings
+.claude/settings.local.json
+
+# data dumps / backups
+backup/
+dump/
+*.bson
+
+# agent config (local only)
+.claude/
+CLAUDE.md
+doppelganger-spec.md

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "doppelganger": {
+      "command": "npx",
+      "args": ["tsx", "src/index.ts"],
+      "env": {
+        "MONGODB_URI": "${MONGODB_URI}"
+      }
+    }
+  }
+}
