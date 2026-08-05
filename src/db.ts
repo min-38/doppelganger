@@ -58,19 +58,31 @@ export function initSchema(): Promise<void> {
   return initialized;
 }
 
-/** Every data table has the same shape: an id plus a JSON blob of the record. */
+/**
+ * Every data table has the same shape. `date` is when the event happened and
+ * is a real indexed column; `created_at`/`updated_at` are system timestamps
+ * (recording yesterday's meal today must not collapse the two). Everything
+ * else lives in the `data` JSON blob.
+ */
 export async function createDataTable(name: string): Promise<void> {
   assertTableName(name);
   await initSchema();
   await db.execute(
     `CREATE TABLE IF NOT EXISTS ${name} (
        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+       date       TEXT NOT NULL,
        data       TEXT NOT NULL,
        created_at TEXT NOT NULL,
        updated_at TEXT NOT NULL
      )`,
   );
-  await ensureFieldIndex(name, "date");
+  await ensureDateIndex(name);
+}
+
+/** Index on the date column — every period query and the default sort use it. */
+export async function ensureDateIndex(table: string): Promise<void> {
+  assertTableName(table);
+  await db.execute(`CREATE INDEX IF NOT EXISTS ${table}_date_idx ON ${table} (date)`);
 }
 
 /**

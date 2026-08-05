@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assertTableName, db, META_TABLE } from "../db.js";
-import { normalizeRecordDates, now } from "../utils/date.js";
+import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
 import { readMeta } from "./meta.js";
 import type { ToolDef } from "./index.js";
 
@@ -32,29 +32,49 @@ const insertRecord: ToolDef = {
   config: {
     description:
       "Store one record in a registered collection. The collection must already exist — call create_category first if it does not. " +
-      "Fields are free-form: put whatever the user reported into `data`. Date-ish fields (date, time, created_at, *_at, *_date, *_time) " +
-      "are normalized to 'YYYY-MM-DD HH:MM:SS' in KST; pass concrete values, never '어제' or '오늘' — resolve those to real dates yourself.",
+      "`date` is required and means WHEN THE EVENT HAPPENED, not when it is being recorded — logging yesterday's dinner today means date is yesterday. " +
+      "The remaining fields are free-form. Every date-ish value is normalized to 'YYYY-MM-DD HH:MM:SS' in KST; " +
+      "pass concrete values, never '어제' or '오늘' — resolve those to real dates yourself.",
     inputSchema: {
       collection_name: z.string().describe("Target collection, as registered in _meta"),
-      data: z.record(z.string(), z.unknown()).describe("The record, e.g. { date: '2026-08-05 19:30:00', food: '김치찌개' }"),
+      date: z.string().describe("When the event happened, e.g. '2026-08-05 19:30:00' or '2026-08-05'"),
+      data: z.record(z.string(), z.unknown()).describe("The rest of the record, e.g. { food: '김치찌개', calories: 600 }"),
     },
   },
-  run: async ({ collection_name, data }: { collection_name: string; data: Record<string, unknown> }) => {
+  run: async ({
+    collection_name,
+    date,
+    data,
+  }: {
+    collection_name: string;
+    date: string;
+    data: Record<string, unknown>;
+  }) => {
     const entry = await requireRegistered(collection_name);
     if (Object.keys(data).length === 0) throw new Error("`data` is empty — nothing to store.");
 
+    // `date` lives in its own indexed column, never inside the JSON blob.
+    // Refuse rather than silently drop one of two conflicting dates.
+    if ("date" in data) {
+      throw new Error("Pass the event date as the `date` argument, not inside `data`.");
+    }
+    const eventDate = normalizeDateTime(date);
     const record = normalizeRecordDates(data);
     const timestamp = now();
     const result = await db.execute({
-      sql: `INSERT INTO ${collection_name} (data, created_at, updated_at) VALUES (?, ?, ?)`,
-      args: [JSON.stringify(record), timestamp, timestamp],
+      sql: `INSERT INTO ${collection_name} (date, data, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+      args: [eventDate, JSON.stringify(record), timestamp, timestamp],
     });
 
-    const sampleFields = await mergeSampleFields(collection_name, entry.sample_fields, Object.keys(record));
+    const sampleFields = await mergeSampleFields(collection_name, entry.sample_fields, [
+      "date",
+      ...Object.keys(record),
+    ]);
     return {
       inserted: true,
       collection_name,
       id: Number(result.lastInsertRowid),
+      date: eventDate,
       record,
       created_at: timestamp,
       sample_fields: sampleFields,

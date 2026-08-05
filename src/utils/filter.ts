@@ -6,6 +6,8 @@ export function jsonPath(field: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(field)) {
     throw new Error(`Invalid field name in filter: "${field}"`);
   }
+  // date / created_at / updated_at are real columns; everything else is JSON.
+  if (field === "date" || field === "created_at" || field === "updated_at") return field;
   return `json_extract(data, '$.${field}')`;
 }
 
@@ -80,6 +82,7 @@ if (import.meta.main) {
   const deepEq: typeof deepStrictEqual = deepStrictEqual;
   eq(buildWhere({}).sql, "");
   deepEq(buildWhere({ food: "라면" }), { sql: "WHERE json_extract(data, '$.food') = ?", args: ["라면"] });
+  eq(buildWhere({ date: { gte: "2026-08-01" } }).sql, "WHERE date >= ?"); // real column, not a JSON path
   deepEq(buildWhere({ calories: { gte: 700 } }).args, [700]);
   deepEq(buildWhere({ food: { contains: "김치" } }).args, ["%김치%"]);
   deepEq(buildWhere({ food: { in: ["라면", "치킨"] } }), {

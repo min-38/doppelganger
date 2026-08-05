@@ -17,10 +17,11 @@ const data: Record<string, unknown[]> = { [META_TABLE]: collections };
 
 for (const entry of collections) {
   const rows = await db.execute(
-    `SELECT id, data, created_at, updated_at FROM ${entry.collection_name} ORDER BY id`,
+    `SELECT id, date, data, created_at, updated_at FROM ${entry.collection_name} ORDER BY id`,
   );
   data[entry.collection_name] = rows.rows.map((row) => ({
     id: Number(row.id),
+    date: String(row.date),
     ...JSON.parse(String(row.data)),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),

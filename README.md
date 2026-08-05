@@ -18,6 +18,7 @@ cp .env.example .env   # fill in TURSO_DATABASE_URL / TURSO_AUTH_TOKEN
 | `npm run dev` | Run the MCP server over stdio |
 | `npm test` | Run the self-checks (date / score / filter) |
 | `npm run backup` | Export every collection to `backup/<YYYY-MM-DD>.json` |
+| `npm run migrate:date -- --apply` | One-off: move the event date from `data` into the `date` column |
 | `npm run build` | Type-check and emit to `dist/` |
 
 `npm run backup -- <dir>` writes somewhere else. The dump holds `_meta` plus

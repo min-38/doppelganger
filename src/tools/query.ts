@@ -33,7 +33,8 @@ const queryRecords: ToolDef = {
       "Read records from ONE collection. Call find_relevant_collections first and query only the collections it returned — never loop over every collection. " +
       "Filter values are matched against fields inside the stored record. Supported per-field conditions: a plain value (equality) or " +
       "{ eq, ne, gte, lte, gt, lt, contains, in }. Date fields are compared as 'YYYY-MM-DD HH:MM:SS' strings, so a range is " +
-      "{ date: { gte: '2026-08-01', lte: '2026-08-07' } } — an end bound given as a bare date covers that whole day. Newest first.",
+      "{ date: { gte: '2026-08-01', lte: '2026-08-07' } } — an end bound given as a bare date covers that whole day. " +
+      "`date` is when the event happened (an indexed column); created_at/updated_at are when the row was written. Newest first.",
     inputSchema: {
       collection_name: z.string().describe("A collection returned by find_relevant_collections"),
       filter: z.record(z.string(), conditionSchema).optional().describe("Field conditions, e.g. { food: { contains: '김치' } }"),
@@ -62,7 +63,7 @@ const queryRecords: ToolDef = {
     const rowLimit = Math.min(limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
     const result = await db.execute({
-      sql: `SELECT id, data, created_at, updated_at FROM ${collection_name}
+      sql: `SELECT id, date, data, created_at, updated_at FROM ${collection_name}
             ${where.sql}
             ORDER BY ${sortPath} ${direction}, id ${direction}
             LIMIT ?`,
@@ -75,6 +76,7 @@ const queryRecords: ToolDef = {
       limit: rowLimit,
       records: result.rows.map((row) => ({
         id: Number(row.id),
+        date: String(row.date),
         ...JSON.parse(String(row.data)),
         created_at: String(row.created_at),
         updated_at: String(row.updated_at),
