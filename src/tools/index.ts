@@ -1,4 +1,5 @@
 import type { ZodRawShape } from "zod";
+import { metaTools } from "./meta.js";
 import { z } from "zod";
 
 export type ToolDef = {
@@ -17,4 +18,4 @@ const ping: ToolDef = {
   run: ({ message }) => ({ pong: true, message: message ?? null }),
 };
 
-export const tools: ToolDef[] = [ping];
+export const tools: ToolDef[] = [ping, ...metaTools];
