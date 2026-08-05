@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { assertTableName, createDataTable, db, META_TABLE } from "../db.js";
-import { now } from "../utils/date.js";
+import { assertTableName, createDataTable, db, ensureFieldIndex, META_TABLE } from "../db.js";
+import { isDateField, now } from "../utils/date.js";
 import { findSimilarCategories, SIMILARITY_THRESHOLD } from "../utils/score.js";
 import { readMeta } from "./meta.js";
 import type { ToolDef } from "./index.js";
@@ -72,6 +72,15 @@ const createCategory: ToolDef = {
 
     const timestamp = now();
     await createDataTable(collection_name);
+    // date is indexed by createDataTable; index any other date-ish field the
+    // category declares up front (start_date, slept_at, ...).
+    const indexedFields = ["date"];
+    for (const field of sample_fields ?? []) {
+      if (field !== "date" && isDateField(field)) {
+        await ensureFieldIndex(collection_name, field);
+        indexedFields.push(field);
+      }
+    }
     await db.execute({
       sql: `INSERT INTO ${META_TABLE}
               (collection_name, description, category_group, keywords, sample_fields, created_at, updated_at)
@@ -90,6 +99,7 @@ const createCategory: ToolDef = {
     return {
       created: true,
       similar,
+      indexed_fields: indexedFields,
       collection: {
         collection_name,
         description,

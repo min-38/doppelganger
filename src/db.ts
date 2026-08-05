@@ -61,8 +61,19 @@ export async function createDataTable(name: string): Promise<void> {
        updated_at TEXT NOT NULL
      )`,
   );
+  await ensureFieldIndex(name, "date");
+}
+
+/**
+ * Expression index on one JSON field. Only date-ish fields get one: those are
+ * what range queries and the default sort hit, and every extra index costs
+ * write time and space on a free-tier database.
+ */
+export async function ensureFieldIndex(table: string, field: string): Promise<void> {
+  assertTableName(table);
+  if (!/^[a-z][a-z0-9_]{0,62}$/i.test(field)) throw new Error(`Invalid field name: "${field}"`);
   await db.execute(
-    `CREATE INDEX IF NOT EXISTS ${name}_date_idx ON ${name} (json_extract(data, '$.date'))`,
+    `CREATE INDEX IF NOT EXISTS ${table}_${field.toLowerCase()}_idx ON ${table} (json_extract(data, '$.${field}'))`,
   );
 }
 
