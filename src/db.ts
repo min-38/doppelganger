@@ -8,7 +8,9 @@ for (const key of ["TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"]) {
   const value = process.env[key];
   if (!value?.trim() || value.startsWith("${")) delete process.env[key];
 }
-loadEnv();
+// Resolve .env next to the repo, not the cwd — the server runs from whatever
+// project Claude Code happens to be in.
+loadEnv({ path: new URL("../.env", import.meta.url).pathname });
 
 const url = process.env.TURSO_DATABASE_URL?.trim() || undefined;
 if (!url) {
