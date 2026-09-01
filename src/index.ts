@@ -9,7 +9,8 @@ for (const tool of tools) {
   server.registerTool(tool.name, tool.config, async (args: any) => {
     try {
       const result = await tool.run(args ?? {});
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      // Compact JSON: indentation added ~30% to every response for no gain.
+      return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // stderr only — stdout is the MCP channel.

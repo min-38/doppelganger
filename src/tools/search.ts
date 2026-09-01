@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "../db.js";
 import { buildWhere } from "../utils/filter.js";
+import { projectRecord } from "../utils/project.js";
 import { rankEntries, type MetaEntry } from "../utils/score.js";
 import { readMeta } from "./meta.js";
 import type { ToolDef } from "./index.js";
@@ -26,13 +27,15 @@ const searchAcrossTables: ToolDef = {
       "Search several collections at once and get one timeline back — for questions that do not name a category ('지난주에 뭐 했지', '8월에 있었던 일'). " +
       "date_from/date_to filter on the event date; keyword matches anywhere in a record's stored fields. " +
       `At most ${MAX_TABLES} collections are searched per call, chosen by relevance to the keyword. ` +
-      "When you already know which collection holds the answer, use query_records instead — it is cheaper and can filter per field.",
+      "When you already know which collection holds the answer, use query_records instead — it is cheaper and can filter per field. " +
+      "Long values are cut short here; read the full record with query_records once you know which one you want.",
     inputSchema: {
       keyword: z.string().min(1).optional().describe("Text to look for inside records, e.g. '스쿼트'"),
       date_from: z.string().optional().describe("Start of the period, e.g. '2026-08-01' (inclusive)"),
       date_to: z.string().optional().describe("End of the period, e.g. '2026-08-07' (inclusive, whole day)"),
       collections: z.array(z.string()).optional().describe("Restrict to these collections instead of picking by relevance"),
       limit: z.number().int().min(1).max(MAX_TOTAL).optional().describe(`Max records in total (default 50, max ${MAX_TOTAL})`),
+      fields: z.array(z.string()).optional().describe("Return only these record fields — omit for everything (truncated)"),
     },
   },
   run: async ({
@@ -41,12 +44,14 @@ const searchAcrossTables: ToolDef = {
     date_to,
     collections,
     limit,
+    fields,
   }: {
     keyword?: string;
     date_from?: string;
     date_to?: string;
     collections?: string[];
     limit?: number;
+    fields?: string[];
   }) => {
     if (!keyword && !date_from && !date_to) {
       throw new Error("Pass a keyword, a date range, or both — an unbounded search would read every collection.");
@@ -82,7 +87,7 @@ const searchAcrossTables: ToolDef = {
           collection_name: entry.collection_name,
           id: Number(row.id),
           date: String(row.date),
-          ...(JSON.parse(String(row.data)) as Record<string, unknown>),
+          ...projectRecord(JSON.parse(String(row.data)) as Record<string, unknown>, fields),
         });
       }
     }
