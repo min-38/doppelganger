@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db, HISTORY_TABLE } from "../db.js";
+import { recordHistory } from "../history.js";
 import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
 import { requireRegistered } from "./insert.js";
 import type { ToolDef } from "./index.js";
@@ -16,21 +17,6 @@ async function readRecord(collectionName: string, id: number) {
     data: JSON.parse(String(row.data)) as Record<string, unknown>,
     created_at: String(row.created_at),
   };
-}
-
-/** Snapshots a record before it is changed, so the previous value survives. */
-async function recordHistory(
-  collectionName: string,
-  id: number,
-  operation: "update" | "delete",
-  before: { date: string; data: Record<string, unknown> },
-) {
-  await db.execute({
-    sql: `INSERT INTO ${HISTORY_TABLE}
-            (collection_name, record_id, operation, before_date, before_data, changed_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [collectionName, id, operation, before.date, JSON.stringify(before.data), now()],
-  });
 }
 
 const updateRecord: ToolDef = {
