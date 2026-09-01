@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assertTableName, db, ensureFieldIndex, META_TABLE } from "../db.js";
 import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
-import { historyStatements } from "../history.js";
+import { historyStatements, trimStatement } from "../history.js";
 import { DUPLICATE_THRESHOLD, findDuplicates, type StoredRecord } from "../utils/duplicate.js";
 import { readMeta } from "./meta.js";
 import type { ToolDef } from "./index.js";
@@ -155,7 +155,15 @@ async function upsertMany(collectionName: string, records: Prepared[], uniqueBy:
     outcomes.push({ operation: "updated", id: previous.id });
   }
 
-  if (histories.length > 0) await db.batch(historyStatements(collectionName, histories), "write");
+  if (histories.length > 0) {
+    await db.batch(
+      [
+        ...historyStatements(collectionName, histories),
+        ...histories.map((entry) => trimStatement(collectionName, entry.id)),
+      ],
+      "write",
+    );
+  }
   if (statements.length > 0) {
     const written = await db.batch(statements, "write");
     // Fill in the ids the inserts just produced, in statement order.

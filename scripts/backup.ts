@@ -1,8 +1,9 @@
 /**
  * Dumps every collection (including _meta) to one JSON file per run.
  *
- *   npm run backup            -> backup/2026-08-05.json
- *   npm run backup -- /tmp    -> /tmp/2026-08-05.json
+ *   npm run backup                    -> backup/2026-08-05.json
+ *   npm run backup -- /tmp            -> /tmp/2026-08-05.json
+ *   npm run backup -- --no-history    -> current state only
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,7 +11,9 @@ import { db, HISTORY_TABLE, META_TABLE } from "../src/db.js";
 import { readMeta } from "../src/tools/meta.js";
 import { now, today } from "../src/utils/date.js";
 
-const outDir = process.argv[2] ?? "backup";
+const args = process.argv.slice(2);
+const withHistory = !args.includes("--no-history");
+const outDir = args.find((arg) => !arg.startsWith("--")) ?? "backup";
 
 const collections = await readMeta();
 const data: Record<string, unknown[]> = { [META_TABLE]: collections };
@@ -28,10 +31,15 @@ for (const entry of collections) {
   }));
 }
 
-// History is part of the snapshot: without it a restore would be impossible
-// from a backup alone.
-const history = await db.execute(`SELECT * FROM ${HISTORY_TABLE} ORDER BY id`);
-data[HISTORY_TABLE] = history.rows.map((row) => ({ ...row }));
+// History is part of the snapshot by default: without it a restore would be
+// impossible from a backup alone. --no-history skips it when only the current
+// state matters and the dump would otherwise be dominated by old revisions.
+if (withHistory) {
+  const history = await db.execute(`SELECT * FROM ${HISTORY_TABLE} ORDER BY id`);
+  data[HISTORY_TABLE] = history.rows.map((row) => ({ ...row }));
+} else {
+  data[HISTORY_TABLE] = [];
+}
 
 await mkdir(outDir, { recursive: true });
 const file = join(outDir, `${today()}.json`);

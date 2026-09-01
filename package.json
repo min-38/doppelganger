@@ -9,7 +9,8 @@
     "start": "node dist/src/index.js",
     "test": "tsx src/utils/date.ts && tsx src/utils/score.ts && tsx src/utils/filter.ts && tsx src/utils/duplicate.ts",
     "backup": "tsx scripts/backup.ts",
-    "migrate:date": "tsx scripts/migrate-date-column.ts"
+    "migrate:date": "tsx scripts/migrate-date-column.ts",
+    "trim:history": "tsx scripts/trim-history.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
