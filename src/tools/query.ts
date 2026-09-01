@@ -1,31 +1,12 @@
 import { z } from "zod";
 import { db } from "../db.js";
-import { buildWhere, jsonPath } from "../utils/filter.js";
+import { buildWhere, conditionSchema, jsonPath } from "../utils/filter.js";
 import { projectRecord } from "../utils/project.js";
 import { requireRegistered } from "./insert.js";
 import type { ToolDef } from "./index.js";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 200;
-
-const conditionSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-  z
-    .object({
-      eq: z.unknown().optional(),
-      ne: z.unknown().optional(),
-      gte: z.union([z.string(), z.number()]).optional(),
-      lte: z.union([z.string(), z.number()]).optional(),
-      gt: z.union([z.string(), z.number()]).optional(),
-      lt: z.union([z.string(), z.number()]).optional(),
-      contains: z.string().optional(),
-      in: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
-    })
-    .strict(),
-]);
 
 const queryRecords: ToolDef = {
   name: "query_records",

@@ -1,5 +1,26 @@
 import { strictEqual, throws, deepStrictEqual } from "node:assert";
+import { z } from "zod";
 import { isDateField, normalizeDateTime } from "./date.js";
+
+/** One field's condition: a plain value (equality) or a set of operators. */
+export const conditionSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z
+    .object({
+      eq: z.unknown().optional(),
+      ne: z.unknown().optional(),
+      gte: z.union([z.string(), z.number()]).optional(),
+      lte: z.union([z.string(), z.number()]).optional(),
+      gt: z.union([z.string(), z.number()]).optional(),
+      lt: z.union([z.string(), z.number()]).optional(),
+      contains: z.string().optional(),
+      in: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+    })
+    .strict(),
+]);
 
 /** Field names go into a JSON path, so they are a trust boundary like table names. */
 export function jsonPath(field: string): string {
