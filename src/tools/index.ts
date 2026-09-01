@@ -1,5 +1,6 @@
 import type { ZodRawShape } from "zod";
 import { categoryTools } from "./category.js";
+import { describeTools } from "./describe.js";
 import { insertTools } from "./insert.js";
 import { metaTools } from "./meta.js";
 import { mutateTools } from "./mutate.js";
@@ -24,4 +25,4 @@ const ping: ToolDef = {
   run: ({ message }) => ({ pong: true, message: message ?? null }),
 };
 
-export const tools: ToolDef[] = [ping, ...metaTools, ...categoryTools, ...insertTools, ...queryTools, ...mutateTools, ...statsTools, ...searchTools];
+export const tools: ToolDef[] = [ping, ...metaTools, ...categoryTools, ...insertTools, ...queryTools, ...mutateTools, ...statsTools, ...searchTools, ...describeTools];
