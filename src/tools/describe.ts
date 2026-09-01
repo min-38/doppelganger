@@ -22,11 +22,20 @@ function shorten(value: unknown): unknown {
   return value.length > 60 ? `${value.slice(0, 60)}…` : value;
 }
 
-/** Two field names describing the same thing (body_water_l vs total_body_water_L). */
-function driftPairs(fields: string[]): { a: string; b: string; similarity: number }[] {
+/**
+ * Two field names describing the same thing (body_water_l vs total_body_water_L).
+ * Similar names alone are noisy — `publisher`/`published_at` are different
+ * fields — so a pair only counts when the two never appear in the same record:
+ * genuine drift is mutually exclusive, related fields are not.
+ */
+function driftPairs(
+  fields: string[],
+  coOccurs: (a: string, b: string) => boolean,
+): { a: string; b: string; similarity: number }[] {
   const pairs = [];
   for (let i = 0; i < fields.length; i++) {
     for (let j = i + 1; j < fields.length; j++) {
+      if (coOccurs(fields[i], fields[j])) continue;
       const normalize = (name: string) => name.toLowerCase().replace(/[_\s]/g, "");
       const a = normalize(fields[i]);
       const b = normalize(fields[j]);
@@ -70,9 +79,10 @@ const describeCollection: ToolDef = {
       sql: `SELECT data FROM ${collection_name} ORDER BY date DESC LIMIT ?`,
       args: [SAMPLE_SIZE],
     });
+    const rows = sample.rows.map((row) => JSON.parse(String(row.data)) as Record<string, unknown>);
     const seen = new Map<string, { count: number; types: Set<string>; sample: unknown }>();
-    for (const row of sample.rows) {
-      for (const [key, value] of Object.entries(JSON.parse(String(row.data)) as Record<string, unknown>)) {
+    for (const record of rows) {
+      for (const [key, value] of Object.entries(record)) {
         const field = seen.get(key) ?? { count: 0, types: new Set<string>(), sample: undefined };
         field.count++;
         field.types.add(typeOf(value));
@@ -90,7 +100,10 @@ const describeCollection: ToolDef = {
       }))
       .sort((a, b) => Number(b.present_in.split("/")[0]) - Number(a.present_in.split("/")[0]));
 
-    const drift = driftPairs(fields.map((field) => field.name));
+    const drift = driftPairs(
+      fields.map((field) => field.name),
+      (a, b) => rows.some((row) => a in row && b in row),
+    );
     return {
       collection_name,
       description: entry.description,
