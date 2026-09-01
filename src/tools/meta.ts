@@ -34,13 +34,18 @@ const listCollections: ToolDef = {
   },
 };
 
+async function countRecords(collectionName: string): Promise<number> {
+  const result = await db.execute(`SELECT count(*) AS n FROM ${collectionName}`);
+  return Number(result.rows[0]?.n ?? 0);
+}
+
 const findRelevantCollections: ToolDef = {
   name: "find_relevant_collections",
   config: {
     description:
       "Search the _meta registry (description / keywords / category_group / name) and return the most relevant collections for a question. " +
       "ALWAYS call this before query_records — never scan every collection. Pass the user's question as-is; Korean is fine. " +
-      "If it returns nothing, the data has not been recorded yet.",
+      "If it returns nothing, the data has not been recorded yet. Each match reports record_count — a count of 0 means the collection exists but holds nothing.",
     inputSchema: {
       query: z.string().min(1).describe("The user's question or topic, e.g. '오늘 뭐 먹을까'"),
       limit: z.number().int().min(1).max(10).optional().describe("Max candidates to return (default 3)"),
@@ -48,18 +53,16 @@ const findRelevantCollections: ToolDef = {
   },
   run: async ({ query, limit }: { query: string; limit?: number }) => {
     const matches = rankEntries(query, await readMeta(), limit ?? 3);
+    // Record counts here save a pointless query_records against a collection
+    // that was created but never filled.
+    const counts = await Promise.all(matches.map(({ entry }) => countRecords(entry.collection_name)));
     return {
       query,
       count: matches.length,
-      matches: matches.map(({ entry, score }) => ({ score, ...entry })),
+      matches: matches.map(({ entry, score }, index) => ({ score, record_count: counts[index], ...entry })),
     };
   },
 };
-
-async function countRecords(collectionName: string): Promise<number> {
-  const result = await db.execute(`SELECT count(*) AS n FROM ${collectionName}`);
-  return Number(result.rows[0]?.n ?? 0);
-}
 
 const suggestMergeCandidates: ToolDef = {
   name: "suggest_merge_candidates",

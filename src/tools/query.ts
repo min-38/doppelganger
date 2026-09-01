@@ -17,7 +17,8 @@ const queryRecords: ToolDef = {
       "{ eq, ne, gte, lte, gt, lt, contains, in }. Date fields are compared as 'YYYY-MM-DD HH:MM:SS' strings, so a range is " +
       "{ date: { gte: '2026-08-01', lte: '2026-08-07' } } — an end bound given as a bare date covers that whole day. " +
       "`date` is when the event happened (an indexed column); created_at/updated_at are when the row was written. Newest first. " +
-      "Ask for `fields` whenever you know which ones you need — records can be several KB each, and long values are cut short unless full: true.",
+      "Ask for `fields` whenever you know which ones you need — records can be several KB each, and long values are cut short unless full: true. " +
+      "The response reports `total` (rows matching the filter) and `has_more`; page through with `offset`.",
     inputSchema: {
       collection_name: z.string().describe("A collection returned by find_relevant_collections"),
       filter: z.record(z.string(), conditionSchema).optional().describe("Field conditions, e.g. { food: { contains: '김치' } }"),
@@ -29,6 +30,7 @@ const queryRecords: ToolDef = {
         .optional()
         .describe("Return only these record fields, e.g. ['title','status'] — omit for everything"),
       full: z.boolean().optional().describe("Return long text values in full instead of truncating them"),
+      offset: z.number().int().min(0).optional().describe("Skip this many rows — use with limit to page through a large collection"),
     },
   },
   run: async ({
@@ -39,6 +41,7 @@ const queryRecords: ToolDef = {
     ascending,
     fields,
     full,
+    offset,
   }: {
     collection_name: string;
     filter?: Record<string, unknown>;
@@ -47,6 +50,7 @@ const queryRecords: ToolDef = {
     ascending?: boolean;
     fields?: string[];
     full?: boolean;
+    offset?: number;
   }) => {
     await requireRegistered(collection_name);
     const where = buildWhere(filter ?? {});
@@ -58,14 +62,25 @@ const queryRecords: ToolDef = {
       sql: `SELECT id, date, data, created_at, updated_at FROM ${collection_name}
             ${where.sql}
             ORDER BY ${sortPath} ${direction}, id ${direction}
-            LIMIT ?`,
-      args: [...where.args, rowLimit] as never,
+            LIMIT ? OFFSET ?`,
+      args: [...where.args, rowLimit, offset ?? 0] as never,
     });
+
+    // How many rows the filter matches overall, so paging does not need a
+    // second guess at whether anything is left.
+    const matched = await db.execute({
+      sql: `SELECT count(*) AS n FROM ${collection_name} ${where.sql}`,
+      args: where.args as never,
+    });
+    const total = Number(matched.rows[0]?.n ?? 0);
 
     return {
       collection_name,
       count: result.rows.length,
+      total,
       limit: rowLimit,
+      offset: offset ?? 0,
+      has_more: (offset ?? 0) + result.rows.length < total,
       fields: fields ?? null,
       records: result.rows.map((row) => ({
         id: Number(row.id),
