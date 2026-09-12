@@ -45,6 +45,7 @@ doppelganger/
 5. **Always normalize date/time to `YYYY-MM-DD HH:MM:SS` before storing.** Convert before insert; also validate format server-side.
 6. **Prevent duplicate tables before creating new ones.** On `create_category`, the server checks similarity against existing `_meta` entries and returns a warning if a similar collection already exists (start with string similarity, can upgrade to embedding similarity later).
 7. **Table names are a trust boundary.** They are interpolated into SQL, so always run them through `assertTableName()` in `src/db.ts` (`^[a-z][a-z0-9_]*$`, `_meta` reserved). Record values always go through bound parameters (`?`), never string concatenation.
+8. **AI working rules are data.** Rules live in the `ai_rules` collection (`scope`: `global` or a collection name) and reach every MCP client through tool responses (`rules` in `find_relevant_collections`, `describe_collection`, `get_context`) — never only in one client's prompt files. `enforce: [{field, mode}]` protects user-entered fields (`user_input`: change needs confirm; `write_once`: fill while empty, change needs confirm); `field` is `a` or `a[].b`. See `src/rules.ts`, `src/utils/guard.ts`.
 
 ## MCP Tools
 - `find_relevant_collections(query)`
@@ -55,10 +56,11 @@ doppelganger/
 - `query_records(collection_name, filter, limit)`
 - `get_stats(collection_name, field, agg_type, from, to, group_by)` — aggregate server-side instead of reading every row
 - `search_across_tables(keyword, date_from, date_to)` — timeline across collections, bounded to 10 tables per call
-- `update_record(collection_name, id, date, data)`
+- `update_record(collection_name, id, date, data, confirm?, reason?)` — changes to protected fields are refused unless `confirm: true` + `reason` (kept in `_history.reason`)
 - `delete_record(collection_name, id)`
 - `restore_record(collection_name, id)` — undoes the last update/delete from `_history`
 - `suggest_merge_candidates()`
+- `get_context(topic)` — call before advising: rules, earlier advice (`advice_log`, active first), habits, latest review notes in one call
 
 Insert paths refuse near-identical records on the same date (`force: true` overrides), the same way `create_category` refuses similar collections.
 `_meta` and `_history` are reserved table names — see `assertTableName()`.

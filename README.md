@@ -32,7 +32,18 @@ replaying `create_category` + `insert_record`.
 `list_collections`, `find_relevant_collections`, `describe_collection`,
 `create_category`, `insert_record`, `insert_records_bulk`, `query_records`,
 `get_stats`, `search_across_tables`, `update_record`, `delete_record`,
-`restore_record`, `suggest_merge_candidates`, `ping`.
+`restore_record`, `suggest_merge_candidates`, `get_context`, `ping`.
+
+Working rules for AI clients live in the `ai_rules` collection (scope `global`
+or a collection name), not in any one client's prompt files, so every model
+gets the same ones: `find_relevant_collections`, `describe_collection` and
+`get_context` return them as `rules`. A rule's `enforce` list protects fields
+the user entered — `update_record` (and `unique_by` upserts) refuse to change
+them unless called with `confirm: true` and a `reason`, which is kept in
+`_history`.
+
+Before giving advice, clients call `get_context(topic)`: rules, earlier advice
+from `advice_log` (active first), habits and the latest reviews in one call.
 
 Query flow: `find_relevant_collections` first, then `query_records` on the one
 or two collections it returns — never scan everything. For numbers use
