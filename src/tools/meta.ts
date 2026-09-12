@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db, META_TABLE, initSchema } from "../db.js";
+import { readRules } from "../rules.js";
 import { categorySimilarity, rankEntries, SIMILARITY_THRESHOLD, type MetaEntry } from "../utils/score.js";
 import type { ToolDef } from "./index.js";
 
@@ -45,7 +46,8 @@ const findRelevantCollections: ToolDef = {
     description:
       "Search the _meta registry (description / keywords / category_group / name) and return the most relevant collections for a question. " +
       "ALWAYS call this before query_records — never scan every collection. Pass the user's question as-is; Korean is fine. " +
-      "If it returns nothing, the data has not been recorded yet. Each match reports record_count — a count of 0 means the collection exists but holds nothing.",
+      "If it returns nothing, the data has not been recorded yet. Each match reports record_count — a count of 0 means the collection exists but holds nothing. " +
+      "`rules` are the user's working rules (global plus those for the matched collections) — follow them when reading or writing.",
     inputSchema: {
       query: z.string().min(1).describe("The user's question or topic, e.g. '오늘 뭐 먹을까'"),
       limit: z.number().int().min(1).max(10).optional().describe("Max candidates to return (default 3)"),
@@ -60,6 +62,7 @@ const findRelevantCollections: ToolDef = {
       query,
       count: matches.length,
       matches: matches.map(({ entry, score }, index) => ({ score, record_count: counts[index], ...entry })),
+      rules: await readRules(["global", ...matches.map(({ entry }) => entry.collection_name)]),
     };
   },
 };

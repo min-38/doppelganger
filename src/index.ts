@@ -3,7 +3,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { initSchema } from "./db.js";
 import { tools } from "./tools/index.js";
 
-const server = new McpServer({ name: "doppelganger", version: "0.1.0" });
+// Sent to every client on connect, whichever model is behind it. Kept short and
+// stable: the rules themselves are data (ai_rules) and arrive in tool responses,
+// so editing them never needs a server restart.
+const INSTRUCTIONS = [
+  "doppelganger is the user's personal lifelog database. Answer questions about the user's own life from stored records, never from memory.",
+  "Reading: call find_relevant_collections first, then query_records on the 1-3 collections it returns. Use get_stats for sums and averages.",
+  "Rules: the user's working rules are stored in the database and come back as `rules` in find_relevant_collections and describe_collection — global ones plus those for the collections involved. Follow them; they override your defaults.",
+].join("\n");
+
+const server = new McpServer({ name: "doppelganger", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
 for (const tool of tools) {
   server.registerTool(tool.name, tool.config, async (args: any) => {

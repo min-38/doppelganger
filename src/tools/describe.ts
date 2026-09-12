@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "../db.js";
+import { readRules } from "../rules.js";
 import { categorySimilarity } from "../utils/score.js";
 import { MAX_VALUE_CHARS } from "../utils/project.js";
 import { requireRegistered } from "./insert.js";
@@ -60,19 +61,21 @@ const describeCollection: ToolDef = {
     description:
       "Show what a collection actually contains: row count, date range, and every field with how many records carry it plus a sample value. " +
       "Call this before get_stats or a field filter when you are not certain of the exact field name — _meta lists names only, and a wrong name " +
-      "silently returns nothing. It also flags near-identical field names that likely mean the same thing recorded two different ways.",
+      "silently returns nothing. It also flags near-identical field names that likely mean the same thing recorded two different ways. " +
+      "`rules` are the user's working rules for this collection (plus global ones) — follow them before writing to it.",
     inputSchema: {
       collection_name: z.string().describe("Collection to inspect"),
     },
   },
   run: async ({ collection_name }: { collection_name: string }) => {
     const entry = await requireRegistered(collection_name);
+    const rules = await readRules(["global", collection_name]);
     const totals = await db.execute(
       `SELECT count(*) AS n, min(date) AS oldest, max(date) AS newest FROM ${collection_name}`,
     );
     const total = Number(totals.rows[0]?.n ?? 0);
     if (total === 0) {
-      return { collection_name, description: entry.description, record_count: 0, fields: [], note: "empty collection" };
+      return { collection_name, description: entry.description, rules, record_count: 0, fields: [], note: "empty collection" };
     }
 
     const sample = await db.execute({
@@ -107,6 +110,7 @@ const describeCollection: ToolDef = {
     return {
       collection_name,
       description: entry.description,
+      rules,
       record_count: total,
       date_range: { oldest: totals.rows[0]?.oldest ?? null, newest: totals.rows[0]?.newest ?? null },
       sampled_rows: sample.rows.length,
