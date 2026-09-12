@@ -10,6 +10,7 @@ const INSTRUCTIONS = [
   "doppelganger is the user's personal lifelog database. Answer questions about the user's own life from stored records, never from memory.",
   "Reading: call find_relevant_collections first, then query_records on the 1-3 collections it returns. Use get_stats for sums and averages.",
   "Rules: the user's working rules are stored in the database and come back as `rules` in find_relevant_collections and describe_collection — global ones plus those for the collections involved. Follow them; they override your defaults.",
+  "Protected values: fields the user entered can be protected by those rules. If update_record refuses a change, do not work around it — show the user what would change, and only after they agree retry with confirm: true and a reason.",
 ].join("\n");
 
 const server = new McpServer({ name: "doppelganger", version: "0.1.0" }, { instructions: INSTRUCTIONS });

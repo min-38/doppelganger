@@ -9,12 +9,13 @@ export async function recordHistory(
   id: number,
   operation: "update" | "delete",
   before: Snapshot,
+  reason?: string,
 ): Promise<void> {
   await db.execute({
     sql: `INSERT INTO ${HISTORY_TABLE}
-            (collection_name, record_id, operation, before_date, before_data, changed_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [collectionName, id, operation, before.date, JSON.stringify(before.data), now()],
+            (collection_name, record_id, operation, before_date, before_data, changed_at, reason)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [collectionName, id, operation, before.date, JSON.stringify(before.data), now(), reason ?? null],
   });
   await trimHistory(collectionName, id);
 }

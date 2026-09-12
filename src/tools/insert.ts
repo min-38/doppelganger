@@ -3,6 +3,8 @@ import { assertTableName, db, ensureFieldIndex, META_TABLE } from "../db.js";
 import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
 import { historyStatements, trimStatement } from "../history.js";
 import { DUPLICATE_THRESHOLD, findDuplicates, type StoredRecord } from "../utils/duplicate.js";
+import { readRules } from "../rules.js";
+import { findViolations, refusal } from "../utils/guard.js";
 import { readMeta } from "./meta.js";
 import type { ToolDef } from "./index.js";
 
@@ -117,6 +119,18 @@ type Prepared = { date: string; data: Record<string, unknown> };
 async function upsertMany(collectionName: string, records: Prepared[], uniqueBy: string[]) {
   const keys = records.map((record, index) => uniqueKeyOf(record.data, uniqueBy, index));
   const existing = await existingByKey(collectionName, uniqueBy, keys);
+
+  // An upsert replaces the whole record, so it must not become a way around protected fields.
+  const enforce = (await readRules([collectionName])).flatMap((rule) => rule.enforce ?? []);
+  if (enforce.length > 0) {
+    const violations = records.flatMap((record, index) => {
+      const previous = existing.get(keys[index]);
+      return previous ? findViolations(previous.data, record.data, enforce).map((v) => ({ ...v, field: `record[${index}] ${v.field}` })) : [];
+    });
+    if (violations.length > 0) {
+      throw new Error(refusal(violations, "change those records one at a time with update_record, confirm: true and a reason."));
+    }
+  }
 
   const timestamp = now();
   const statements = [];

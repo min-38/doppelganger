@@ -78,6 +78,13 @@ export function initSchema(): Promise<void> {
            ON ${HISTORY_TABLE} (collection_name, record_id, id)`,
       ),
     )
+    // Why a protected field was changed (update_record confirm). Added after the
+    // table existed, so it is a nullable column other writers can ignore.
+    .then(() =>
+      db.execute(`ALTER TABLE ${HISTORY_TABLE} ADD COLUMN reason TEXT`).catch((error) => {
+        if (!String(error).includes("duplicate column")) throw error;
+      }),
+    )
     .then(() => undefined);
   return initialized;
 }

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { db, HISTORY_TABLE } from "../db.js";
 import { recordHistory } from "../history.js";
+import { readRules } from "../rules.js";
+import { findViolations, refusal } from "../utils/guard.js";
 import { normalizeDateTime, normalizeRecordDates, now } from "../utils/date.js";
 import { requireRegistered } from "./insert.js";
 import type { ToolDef } from "./index.js";
@@ -26,12 +28,16 @@ const updateRecord: ToolDef = {
       "Patch one existing record. Call query_records first to get the id — never guess it. " +
       "Only the fields you pass are changed; the rest stay as they are. Pass null to remove a field. " +
       "Pass `date` to correct when the event happened (it is a column, not part of data). " +
-      "Date-ish fields are re-normalized to 'YYYY-MM-DD HH:MM:SS' (KST) and updated_at is refreshed.",
+      "Date-ish fields are re-normalized to 'YYYY-MM-DD HH:MM:SS' (KST) and updated_at is refreshed. " +
+      "Values the user entered can be protected by the user's rules: a change to them is refused and the refusal lists what was caught. " +
+      "Pass confirm: true with a reason only after the user has agreed to that exact change.",
     inputSchema: {
       collection_name: z.string().describe("Collection holding the record"),
       id: z.number().int().positive().describe("Record id from query_records"),
       date: z.string().optional().describe("Corrected event date, e.g. '2026-08-04 23:00:00'"),
       data: z.record(z.string(), z.unknown()).describe("Fields to change, e.g. { hours: 7 } or { note: null } to drop a field"),
+      confirm: z.boolean().optional().describe("Apply a change to protected fields — only after the user agreed to this exact change"),
+      reason: z.string().min(1).optional().describe("Why the protected change is made; kept in the history. Required with confirm"),
     },
   },
   run: async ({
@@ -39,11 +45,15 @@ const updateRecord: ToolDef = {
     id,
     date,
     data,
+    confirm,
+    reason,
   }: {
     collection_name: string;
     id: number;
     date?: string;
     data: Record<string, unknown>;
+    confirm?: boolean;
+    reason?: string;
   }) => {
     await requireRegistered(collection_name);
     const { date: dateInData, ...rest } = data;
@@ -59,15 +69,30 @@ const updateRecord: ToolDef = {
       if (value === null) delete merged[key];
     }
 
+    const enforce = (await readRules([collection_name])).flatMap((rule) => rule.enforce ?? []);
+    const violations = findViolations(current.data, merged, enforce);
+    if (violations.length > 0 && !confirm) {
+      throw new Error(refusal(violations, "call update_record again with confirm: true and a reason."));
+    }
+    if (confirm && !reason) throw new Error("confirm: true needs a reason — say why this protected change is made.");
+
     const eventDate = newDate === undefined ? current.date : normalizeDateTime(newDate);
-    await recordHistory(collection_name, id, "update", current);
+    await recordHistory(collection_name, id, "update", current, reason);
     const timestamp = now();
     await db.execute({
       sql: `UPDATE ${collection_name} SET date = ?, data = ?, updated_at = ? WHERE id = ?`,
       args: [eventDate, JSON.stringify(merged), timestamp, id],
     });
 
-    return { updated: true, collection_name, id, date: eventDate, record: merged, updated_at: timestamp };
+    return {
+      updated: true,
+      collection_name,
+      id,
+      date: eventDate,
+      record: merged,
+      updated_at: timestamp,
+      ...(violations.length > 0 ? { protected_changes: violations.map((v) => v.field), reason } : {}),
+    };
   },
 };
 
